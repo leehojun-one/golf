@@ -125,6 +125,17 @@
   nav button{flex:1;background:none;border:none;color:var(--muted);padding:11px 0 12px;display:flex;flex-direction:column;align-items:center;gap:4px;font-size:11px}
   nav button .ic{font-size:19px} nav button.on{color:var(--lime)}
 
+  /* PC 넓은 화면 */
+  @media(min-width:640px){
+    body{max-width:600px;margin:0 auto;border-left:1px solid var(--line);border-right:1px solid var(--line)}
+    #mapScreen{max-width:none}
+    .mapbar.bottom{max-width:760px;margin:0 auto;width:100%}
+  }
+
+  .bktext{width:100%;height:76px;padding:10px;border-radius:12px;border:1px solid var(--line);background:var(--bg);color:var(--muted);font-size:11px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;resize:none;margin-bottom:10px}
+  .bkrow{display:flex;gap:8px}
+  .bkrow .btn{margin-top:0}
+
   .toast{position:fixed;left:50%;bottom:88px;transform:translateX(-50%) translateY(20px);background:var(--lime);color:#0a2010;font-weight:700;font-size:14px;padding:11px 20px;border-radius:30px;box-shadow:var(--shadow);opacity:0;pointer-events:none;transition:.25s;z-index:2000;white-space:nowrap}
   .toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
 
@@ -229,6 +240,21 @@
     <div class="card">
       <h3>코스 정보 (파)</h3>
       <div class="parinfo" id="parInfo"></div>
+    </div>
+
+    <div class="card">
+      <h3>좌표 백업 · 옮기기</h3>
+      <p class="cardhint">PC에서 찍은 좌표를 폰으로 옮길 때 씁니다. PC에서 "코드 만들기" → 나온 글자를 카톡으로 내게 보내기 → 폰에서 붙여넣고 "불러오기". 파일로 주고받아도 됩니다.</p>
+      <textarea class="bktext" id="bkText" placeholder="여기에 코드가 나오거나, 옮겨온 코드를 붙여넣으세요"></textarea>
+      <div class="bkrow">
+        <button class="btn" onclick="exportCoords()">코드 만들기 · 복사</button>
+        <button class="btn" onclick="importCoords()">붙여넣고 불러오기</button>
+      </div>
+      <div class="bkrow" style="margin-top:8px">
+        <button class="btn" onclick="downloadCoords()">파일로 내려받기</button>
+        <button class="btn" onclick="document.getElementById('bkFile').click()">파일 불러오기</button>
+      </div>
+      <input type="file" id="bkFile" accept=".json,.txt" style="display:none" onchange="uploadCoords(this)">
     </div>
 
     <div class="card">
@@ -448,6 +474,57 @@ function editCoordPrompt(){
   if(raw===null)return;const t=raw.trim();if(t===''){g.center=null;save();renderSetup();renderDist();return;}
   const mm=t.match(/-?\d+(?:\.\d+)?/g);if(!mm||mm.length<2){toast('형식 확인: 37.28, 127.55');return;}
   g.center={lat:parseFloat(mm[0]),lng:parseFloat(mm[1])};save();renderSetup();renderDist();toast('저장됨');
+}
+
+/* ===== 좌표 백업 / 복원 ===== */
+function coordsJSON(){return JSON.stringify({app:'kumgang',v:3,courseName:S.courseName,greens:S.greens});}
+function exportCoords(){
+  const data=coordsJSON();
+  const ta=document.getElementById('bkText');ta.value=data;
+  try{ta.select();document.execCommand('copy');}catch(e){}
+  if(navigator.clipboard){navigator.clipboard.writeText(data).then(()=>toast('코드 복사됨'),()=>toast('아래 코드를 직접 복사하세요'));}
+  else toast('아래 코드를 직접 복사하세요');
+}
+function applyCoords(text){
+  let d;
+  try{d=JSON.parse(text);}catch(e){toast('코드 형식이 올바르지 않습니다');return;}
+  if(!d||!d.greens){toast('좌표 데이터가 없는 코드입니다');return;}
+  let n=0;
+  CKEYS.forEach(k=>{
+    if(!Array.isArray(d.greens[k])||d.greens[k].length!==9)return;
+    d.greens[k].forEach((h,idx)=>{
+      ['L','R'].forEach(sd=>{
+        if(!h||!h[sd])return;
+        ['front','center','back'].forEach(pt=>{
+          const p=h[sd][pt];
+          if(p&&typeof p.lat==='number'&&typeof p.lng==='number'){S.greens[k][idx][sd][pt]={lat:p.lat,lng:p.lng};n++;}
+        });
+      });
+    });
+  });
+  if(n===0){toast('불러올 좌표가 없습니다');return;}
+  save();renderSetup();renderDist();toast(n+'개 지점 불러옴');
+}
+function importCoords(){
+  const t=document.getElementById('bkText').value.trim();
+  if(!t){toast('붙여넣은 코드가 없습니다');return;}
+  applyCoords(t);
+}
+function downloadCoords(){
+  const blob=new Blob([coordsJSON()],{type:'application/json'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download='kumgang_greens.json';
+  document.body.appendChild(a);a.click();
+  setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},500);
+  toast('파일 저장됨');
+}
+function uploadCoords(inp){
+  const f=inp.files&&inp.files[0];if(!f)return;
+  const r=new FileReader();
+  r.onload=()=>{applyCoords(String(r.result));inp.value='';};
+  r.onerror=()=>{toast('파일을 읽지 못했습니다');inp.value='';};
+  r.readAsText(f);
 }
 
 function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('on');clearTimeout(tTimer);tTimer=setTimeout(()=>t.classList.remove('on'),1800);}
